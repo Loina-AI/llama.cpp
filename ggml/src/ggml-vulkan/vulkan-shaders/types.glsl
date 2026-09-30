@@ -186,6 +186,11 @@ struct block_q8_0_packed16
     int16_t qs[32/2];
 };
 
+// Some mobile drivers convert negative int8 values to unsigned floats.
+vec2 unpack_q8_0(int packed) {
+    return vec2(bitfieldExtract(packed, 0, 8), bitfieldExtract(packed, 8, 8));
+}
+
 #if defined(DATA_A_Q8_0)
 #define QUANT_K QUANT_K_Q8_0
 #define QUANT_R QUANT_R_Q8_0

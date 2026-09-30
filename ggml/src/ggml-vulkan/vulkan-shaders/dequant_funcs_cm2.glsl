@@ -231,7 +231,7 @@ float16_t dequantFuncQ8_0(const in decodeBufQ8_0 bl, const in uint blockCoords[2
     const uint iqs = idx;
 
     // Load 16b and select the byte for this element
-    int32_t qs = unpack8(bl.block.qs[(iqs & 0x1E) >> 1])[iqs & 1];
+    int qs = bitfieldExtract(int(bl.block.qs[(iqs & 0x1E) >> 1]), int(iqs & 1) * 8, 8);
     float16_t ret = float16_t(qs) * d;
     return ret;
 }
@@ -241,10 +241,9 @@ f16vec4 dequantFuncQ8_0_v(const in decodeBufQ8_0 bl, const in uint blockCoords[2
     const float16_t d = bl.block.d;
     const uint idx = coordInBlock[1];
     const uint base = idx >> 1u;
-    const uint w =  uint(uint16_t(bl.block.qs[base]))
-                 | (uint(uint16_t(bl.block.qs[base + 1u])) << 16u);
-    const i8vec4 qi = unpack8(int32_t(w));
-    return f16vec4(vec4(qi) * vec4(float(d)));
+    const vec2 v0 = unpack_q8_0(int(bl.block.qs[base]));
+    const vec2 v1 = unpack_q8_0(int(bl.block.qs[base + 1u]));
+    return f16vec4(vec4(v0, v1) * float(d));
 }
 
 layout(buffer_reference, std430, buffer_reference_align = 2) buffer decodeBufTQ1_0 {

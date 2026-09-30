@@ -9887,6 +9887,16 @@ static void ggml_backend_opencl_buffer_set_tensor(ggml_backend_buffer_t buffer, 
     cl_context context = backend_ctx->context;
     cl_command_queue queue = backend_ctx->queue;
 
+    // KV restore writes AoS bytes, including partial views. Do not repack them as weights.
+    if (ggml_backend_buffer_get_usage(buffer) == GGML_BACKEND_BUFFER_USAGE_COMPUTE &&
+        (tensor->type == GGML_TYPE_Q4_0 || tensor->type == GGML_TYPE_Q8_0)) {
+        ggml_tensor_extra_cl * extra = (ggml_tensor_extra_cl *) tensor->extra;
+        GGML_ASSERT(extra);
+        CL_CHECK(clEnqueueWriteBuffer(queue, extra->data_device, CL_TRUE,
+            extra->offset + tensor->view_offs + offset, size, data, 0, NULL, NULL));
+        return;
+    }
+
 #ifdef GGML_OPENCL_SOA_Q
     if (tensor->type == GGML_TYPE_Q1_0) {
         ggml_tensor_extra_cl * extra_orig = (ggml_tensor_extra_cl *)tensor->extra;

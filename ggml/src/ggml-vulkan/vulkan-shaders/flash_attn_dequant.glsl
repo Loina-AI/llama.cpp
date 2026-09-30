@@ -99,8 +99,8 @@ layout (binding = 1) readonly buffer K_PACKED_Q5_1_P32 { block_q5_1_packed32 dat
 }
 
 #define FA_DEQUANT4_Q8_0(BUF) {                                                                   \
-    const i8vec2 v0 = unpack8(int32_t(BUF.data[a_offset + ib].qs[iqs / 2    ])).xy;               \
-    const i8vec2 v1 = unpack8(int32_t(BUF.data[a_offset + ib].qs[iqs / 2 + 1])).xy;               \
+    const vec2 v0 = unpack_q8_0(int(BUF.data[a_offset + ib].qs[iqs / 2    ]));                   \
+    const vec2 v1 = unpack_q8_0(int(BUF.data[a_offset + ib].qs[iqs / 2 + 1]));                   \
     return FLOAT_TYPE(BUF.data[a_offset + ib].d) * FLOAT_TYPEV4(v0.x, v0.y, v1.x, v1.y);          \
 }
 

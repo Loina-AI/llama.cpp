@@ -425,8 +425,8 @@ void load_a_to_shmem(const uint pos_a, const uint row, const uint col, const uin
         const uint iqs = idx & 0x07;
 
         const float d = float(a_q8_0_p16.data[ib].d);
-        const i8vec2 v0 = unpack8(int32_t(a_q8_0_p16.data[ib].qs[2*iqs])).xy; // vec4 used due to #12147
-        const i8vec2 v1 = unpack8(int32_t(a_q8_0_p16.data[ib].qs[2*iqs + 1])).xy;
+        const vec2 v0 = unpack_q8_0(int(a_q8_0_p16.data[ib].qs[2*iqs]));
+        const vec2 v1 = unpack_q8_0(int(a_q8_0_p16.data[ib].qs[2*iqs + 1]));
         const vec4 v = vec4(v0.x, v0.y, v1.x, v1.y) * d;
 
         store_a(col, k_pair, FLOAT_TYPEV2(v.xy));

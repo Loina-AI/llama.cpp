@@ -36,7 +36,7 @@ void main() {
     const uint q_idx = 16*il;
 
     [[unroll]] for (uint l = 0; l < 16; l += 2) {
-        data_b[b_idx + l    ] = D_TYPE(d * data_a[ib].qs[q_idx + l    ]);
-        data_b[b_idx + l + 1] = D_TYPE(d * data_a[ib].qs[q_idx + l + 1]);
+        data_b[b_idx + l    ] = D_TYPE(d * bitfieldExtract(int(data_a[ib].qs[q_idx + l    ]), 0, 8));
+        data_b[b_idx + l + 1] = D_TYPE(d * bitfieldExtract(int(data_a[ib].qs[q_idx + l + 1]), 0, 8));
     }
 }
