@@ -40,20 +40,22 @@ function(test_shader_extension_support EXTENSION_NAME TEST_SHADER_FILE RESULT_VA
         COMMAND ${Vulkan_GLSLC_EXECUTABLE} -o - -fshader-stage=compute --target-env=vulkan1.3 "${TEST_SHADER_FILE}"
         OUTPUT_VARIABLE glslc_output
         ERROR_VARIABLE glslc_error
+        RESULT_VARIABLE glslc_result
     )
 
-    if (${glslc_error} MATCHES ".*extension not supported: ${EXTENSION_NAME}.*")
+    if (NOT glslc_result EQUAL 0)
         message(STATUS "${EXTENSION_NAME} not supported by glslc")
+        set(shader_extension_support OFF)
         set(${RESULT_VARIABLE} OFF PARENT_SCOPE)
     else()
         message(STATUS "${EXTENSION_NAME} supported by glslc")
+        set(shader_extension_support ON)
         set(${RESULT_VARIABLE} ON PARENT_SCOPE)
         add_compile_definitions(${RESULT_VARIABLE})
-
-        # Ensure the extension support is forwarded to vulkan-shaders-gen
-        list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -D${RESULT_VARIABLE}=ON)
-        set(VULKAN_SHADER_GEN_CMAKE_ARGS "${VULKAN_SHADER_GEN_CMAKE_ARGS}" PARENT_SCOPE)
     endif()
+    # Forward OFF too: a compiler change must clear the generator's cached features.
+    list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -D${RESULT_VARIABLE}=${shader_extension_support})
+    set(VULKAN_SHADER_GEN_CMAKE_ARGS "${VULKAN_SHADER_GEN_CMAKE_ARGS}" PARENT_SCOPE)
 endfunction()
 
 if (Vulkan_FOUND)
@@ -179,6 +181,15 @@ if (Vulkan_FOUND)
 
     include(ExternalProject)
 
+    set (_ggml_vk_host_suffix $<IF:$<STREQUAL:${CMAKE_HOST_SYSTEM_NAME},Windows>,.exe,>)
+    set (_ggml_vk_genshaders_dir "${CMAKE_BINARY_DIR}/$<CONFIG>")
+    set (_ggml_vk_genshaders_cmd "${_ggml_vk_genshaders_dir}/vulkan-shaders-gen${_ggml_vk_host_suffix}")
+    if (CMAKE_VERSION VERSION_LESS 3.26)
+        set (_ggml_vk_gen_byproducts BUILD_BYPRODUCTS ${_ggml_vk_genshaders_cmd})
+    else()
+        set (_ggml_vk_gen_byproducts INSTALL_BYPRODUCTS ${_ggml_vk_genshaders_cmd})
+    endif()
+
     if (CMAKE_CROSSCOMPILING)
         list(APPEND VULKAN_SHADER_GEN_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${HOST_CMAKE_TOOLCHAIN_FILE})
         message(STATUS "vulkan-shaders-gen toolchain file: ${HOST_CMAKE_TOOLCHAIN_FILE}")
@@ -202,11 +213,9 @@ if (Vulkan_FOUND)
 
         INSTALL_COMMAND ${CMAKE_COMMAND} -E env --unset=DESTDIR
                         ${CMAKE_COMMAND} --install . --config $<CONFIG>
+        ${_ggml_vk_gen_byproducts}
     )
 
-    set (_ggml_vk_host_suffix $<IF:$<STREQUAL:${CMAKE_HOST_SYSTEM_NAME},Windows>,.exe,>)
-    set (_ggml_vk_genshaders_dir "${CMAKE_BINARY_DIR}/$<CONFIG>")
-    set (_ggml_vk_genshaders_cmd "${_ggml_vk_genshaders_dir}/vulkan-shaders-gen${_ggml_vk_host_suffix}")
     set (_ggml_vk_header     "${CMAKE_CURRENT_BINARY_DIR}/ggml-vulkan-shaders.hpp")
     set (_ggml_vk_input_dir  "${CMAKE_CURRENT_SOURCE_DIR}/vulkan-shaders")
     set (_ggml_vk_output_dir "${CMAKE_CURRENT_BINARY_DIR}/vulkan-shaders.spv")
@@ -231,6 +240,7 @@ if (Vulkan_FOUND)
             --target-hpp ${_ggml_vk_header}
         DEPENDS ${_ggml_vk_shaders_gen_sources}
                 vulkan-shaders-gen
+                ${_ggml_vk_genshaders_cmd}
         COMMENT "Generate vulkan shaders header"
     )
     target_sources(ggml-vulkan PRIVATE ${_ggml_vk_header})
@@ -249,8 +259,10 @@ if (Vulkan_FOUND)
                 --target-hpp ${_ggml_vk_header}
                 --target-cpp ${_ggml_vk_target_cpp}
             DEPENDS ${file_full}
+                    ${Vulkan_GLSLC_EXECUTABLE}
                     ${_ggml_vk_shaders_gen_sources}
                     vulkan-shaders-gen
+                    ${_ggml_vk_genshaders_cmd}
             COMMENT "Generate vulkan shaders for ${file}"
         )
         target_sources(ggml-vulkan PRIVATE ${_ggml_vk_target_cpp})
