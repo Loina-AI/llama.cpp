@@ -71,6 +71,22 @@ target_compile_features   (llama PRIVATE cxx_std_17) # don't bump
 
 target_link_libraries(llama PUBLIC ggml)
 
+option(LLAMA_BUILD_JINJA "Build the C API for Jinja templates" OFF)
+if(LLAMA_BUILD_JINJA)
+    add_library(llama-jinja STATIC
+        ../common/json.cpp
+        ../common/unicode.cpp
+        ../common/jinja/lexer.cpp
+        ../common/jinja/parser.cpp
+        ../common/jinja/runtime.cpp
+        ../common/jinja/value.cpp
+        ../common/jinja/string.cpp)
+    target_include_directories(llama-jinja PUBLIC ../common PRIVATE . ../vendor)
+    target_compile_features(llama-jinja PRIVATE cxx_std_17)
+    target_link_libraries(llama-jinja PUBLIC llama)
+    set_target_properties(llama-jinja PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
 if (BUILD_SHARED_LIBS)
     set_target_properties(llama PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_compile_definitions(llama PRIVATE LLAMA_BUILD)

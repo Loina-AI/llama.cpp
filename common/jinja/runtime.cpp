@@ -2,11 +2,17 @@
 #include "runtime.h"
 #include "value.h"
 #include "utils.h"
+#include "parser.h"
+#include "../jinja.h"
+#include "../json.h"
 
 #include <string>
 #include <vector>
 #include <memory>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 #define FILENAME "jinja-runtime"
 
@@ -1012,3 +1018,60 @@ std::string runtime::debug_dump_program(const program & prog, const std::string 
 }
 
 } // namespace jinja
+
+struct llama_jinja {
+    std::string source;
+    jinja::program program;
+};
+
+static void jinja_error(char * error, size_t capacity, const char * message) {
+    if (error && capacity) {
+        std::snprintf(error, capacity, "%s", message);
+    }
+}
+
+llama_jinja * llama_jinja_create(const char * source, char * error, size_t capacity) {
+    if (error && capacity) {
+        error[0] = '\0';
+    }
+    try {
+        if (!source) {
+            throw std::invalid_argument("Missing template source");
+        }
+        jinja::lexer lexer;
+        auto tokens = lexer.tokenize(source);
+        auto program = jinja::parse_from_tokens(tokens);
+        return new llama_jinja{tokens.source, std::move(program)};
+    } catch (const std::exception & e) {
+        jinja_error(error, capacity, e.what());
+        return nullptr;
+    }
+}
+
+char * llama_jinja_render(const llama_jinja * tmpl, const char * context_json, char * error, size_t capacity) {
+    if (error && capacity) {
+        error[0] = '\0';
+    }
+    try {
+        if (!tmpl || !context_json) {
+            throw std::invalid_argument("Missing template or context");
+        }
+        jinja::context ctx(tmpl->source);
+        jinja::global_from_json(ctx, common_json::parse(context_json), false);
+        jinja::runtime runtime(ctx);
+        auto result = jinja::runtime::gather_string_parts(runtime.execute(tmpl->program))->as_string().str();
+        char * output = static_cast<char *>(std::malloc(result.size() + 1));
+        if (!output) {
+            throw std::bad_alloc();
+        }
+        std::memcpy(output, result.c_str(), result.size() + 1);
+        return output;
+    } catch (const std::exception & e) {
+        jinja_error(error, capacity, e.what());
+        return nullptr;
+    }
+}
+
+void llama_jinja_free(llama_jinja * tmpl) {
+    delete tmpl;
+}
