@@ -1,5 +1,9 @@
 #include "ggml-vulkan-common.h"
 
+static bool ggml_vk_adreno_840(const vk::PhysicalDeviceProperties & props) {
+    return props.vendorID == VK_VENDOR_ID_QUALCOMM && strstr(props.deviceName.data(), "Adreno (TM) 840") != nullptr;
+}
+
 static vk_device_architecture get_device_architecture(const vk::PhysicalDevice& device) {
     vk::PhysicalDeviceProperties props = device.getProperties();
 
@@ -4276,6 +4280,10 @@ vk_device ggml_vk_get_device(size_t idx) {
         }
 
         device->integer_dot_product = device->integer_dot_product && shader_integer_dot_product_props.integerDotProduct4x8BitPackedSignedAccelerated;
+        // Scalar integer-dot MMQ is slower than FP16 on this driver.
+        if (ggml_vk_adreno_840(device->properties)) {
+            device->integer_dot_product = false;
+        }
 
         device->min_imported_host_pointer_alignment = external_memory_host_props.minImportedHostPointerAlignment;
 
@@ -4905,8 +4913,7 @@ vk_device ggml_vk_get_device(size_t idx) {
 
         // Adreno 840 loses the device or corrupts inference with fused kernels.
         device->disable_fusion = getenv("GGML_VK_DISABLE_FUSION") != nullptr ||
-            (device->vendor_id == VK_VENDOR_ID_QUALCOMM &&
-             strstr(device->properties.deviceName.data(), "Adreno (TM) 840") != nullptr);
+            ggml_vk_adreno_840(device->properties);
 
         device->disable_descriptor_reuse = getenv("GGML_VK_DISABLE_DESCRIPTOR_REUSE") != nullptr;
 
@@ -5123,7 +5130,8 @@ static void ggml_vk_print_gpu_info(size_t idx) {
 
     integer_dot_product = integer_dot_product
                        && shader_integer_dot_product_props.integerDotProduct4x8BitPackedSignedAccelerated
-                       && shader_integer_dot_product_features.shaderIntegerDotProduct;
+                       && shader_integer_dot_product_features.shaderIntegerDotProduct
+                       && !ggml_vk_adreno_840(props2.properties);
 
     coopmat_support = coopmat_support
 #if defined(GGML_VULKAN_COOPMAT_GLSLC_SUPPORT)

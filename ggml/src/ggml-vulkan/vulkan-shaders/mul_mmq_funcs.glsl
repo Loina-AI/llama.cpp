@@ -538,17 +538,18 @@ void block_a_to_shmem(const uint buf_ib, const uint ib, const uint iqs, const bo
         const uint qh_idx = (iqs_k / 32) * 8 + iqs;
         const uint qh_shift = ((iqs_k % 32) / 8) * 2;
 
-        const i8vec2 vals00 = (unpack8(int32_t((data_a_packed16[ib_k].ql[ql_idx * 2    ] >> ql_shift) & uint16_t(0x0F0F))).xy |
-                              unpack8(int32_t(((data_a_packed16[ib_k].qh[qh_idx * 2    ] >> qh_shift) & uint16_t(0x0303)) << 4)).xy) - int8_t(32);
-        const i8vec2 vals01 = (unpack8(int32_t((data_a_packed16[ib_k].ql[ql_idx * 2 + 1] >> ql_shift) & uint16_t(0x0F0F))).xy |
-                              unpack8(int32_t(((data_a_packed16[ib_k].qh[qh_idx * 2 + 1] >> qh_shift) & uint16_t(0x0303)) << 4)).xy) - int8_t(32);
-        buf_a[buf_ib].qs[iqs] = pack32(i8vec4(vals00.x, vals00.y, vals01.x, vals01.y));
+        const uint ql = uint(data_a_packed16[ib_k].ql[ql_idx * 2]) | (uint(data_a_packed16[ib_k].ql[ql_idx * 2 + 1]) << 16);
+        const uint qh = uint(data_a_packed16[ib_k].qh[qh_idx * 2]) | (uint(data_a_packed16[ib_k].qh[qh_idx * 2 + 1]) << 16);
+        const uint quants = ((ql >> ql_shift) & 0x0F0F0F0F) | (((qh >> qh_shift) & 0x03030303) << 4);
+        const ivec4 values = ivec4(bitfieldExtract(quants, 0, 8), bitfieldExtract(quants, 8, 8),
+                                  bitfieldExtract(quants, 16, 8), bitfieldExtract(quants, 24, 8)) - ivec4(32);
+        buf_a[buf_ib].qs[iqs] = pack_i8(values);
 
         if (iqs == 0) {
             const uint is = iqs_k / 4;
-            const i8vec2 scales = unpack8(int32_t(data_a_packed16[ib_k].scales[is / 2])).xy;
+            const vec2 scales = unpack_q8_0(int32_t(data_a_packed16[ib_k].scales[is / 2]));
 
-            buf_a[buf_ib].d_scales = FLOAT_TYPEV2(float(data_a_packed16[ib_k].d) * vec2(scales));
+            buf_a[buf_ib].d_scales = FLOAT_TYPEV2(float(data_a_packed16[ib_k].d) * scales);
         }
     } else {
         buf_a[buf_ib].qs[iqs] = 0;
