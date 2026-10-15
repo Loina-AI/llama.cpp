@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "parser.h"
 #include "../jinja.h"
+#include "../chat-template.h"
 #include "../json.h"
 
 #include <string>
@@ -1028,6 +1029,10 @@ static void jinja_error(char * error, size_t capacity, const char * message) {
     if (error && capacity) {
         std::snprintf(error, capacity, "%s", message);
     }
+}
+
+const char * llama_jinja_default_template(void) {
+    return LLAMA_CHATML_TEMPLATE_SRC;
 }
 
 llama_jinja * llama_jinja_create(const char * source, char * error, size_t capacity) {

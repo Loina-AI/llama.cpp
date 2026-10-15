@@ -1,4 +1,5 @@
 #include "chat.h"
+#include "chat-template.h"
 
 #include "chat-auto-parser-helpers.h"
 #include "chat-auto-parser.h"
@@ -684,14 +685,6 @@ std::string common_chat_format_example(const struct common_chat_templates *     
     return common_chat_templates_apply(tmpls, inputs).prompt;
 }
 
-#define CHATML_TEMPLATE_SRC                                                               \
-    "{%- for message in messages -%}\n"                                                   \
-    "  {{- '<|im_start|>' + message.role + '\n' + message.content + '<|im_end|>\n' -}}\n" \
-    "{%- endfor -%}\n"                                                                    \
-    "{%- if add_generation_prompt -%}\n"                                                  \
-    "  {{- '<|im_start|>assistant\n' -}}\n"                                               \
-    "{%- endif -%}"
-
 void common_chat_templates_free(struct common_chat_templates * tmpls) {
     delete tmpls;
 }
@@ -753,7 +746,7 @@ common_chat_templates_ptr common_chat_templates_init(const struct llama_model * 
         if (!template_tool_use_src.empty()) {
             default_template_src = template_tool_use_src;
         } else {
-            default_template_src = CHATML_TEMPLATE_SRC;
+            default_template_src = LLAMA_CHATML_TEMPLATE_SRC;
         }
     }
 

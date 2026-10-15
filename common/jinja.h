@@ -9,6 +9,9 @@ extern "C" {
 
 typedef struct llama_jinja llama_jinja;
 
+/* Borrowed source for llama.cpp's default ChatML formatter. */
+const char * llama_jinja_default_template(void);
+
 /* Errors are copied into the caller's buffer. Rendered strings use malloc(),
  * so C callers release them with free(). Templates may be reused. */
 llama_jinja * llama_jinja_create(const char * source, char * error, size_t capacity);
