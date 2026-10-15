@@ -161,11 +161,13 @@ void ggml_vk_print_device_fault_info(const vk_device& device) {
 
     std::vector<VkDeviceFaultAddressInfoEXT> address_infos(fault_counts.addressInfoCount);
     std::vector<VkDeviceFaultVendorInfoEXT> vendor_infos(fault_counts.vendorInfoCount);
+    std::vector<uint8_t> vendor_binary(fault_counts.vendorBinarySize);
 
     VkDeviceFaultInfoEXT fault_info {};
     fault_info.sType = VK_STRUCTURE_TYPE_DEVICE_FAULT_INFO_EXT;
     fault_info.pAddressInfos = address_infos.data();
     fault_info.pVendorInfos = vendor_infos.data();
+    fault_info.pVendorBinaryData = vendor_binary.data();
 
     res = device->pfn_vkGetDeviceFaultInfoEXT(device->device, &fault_counts, &fault_info);
     if (res != VK_SUCCESS) {
@@ -4901,7 +4903,10 @@ vk_device ggml_vk_get_device(size_t idx) {
 
         device->serialize_submissions = getenv("GGML_VK_SERIALIZE_SUBMISSIONS") != nullptr;
 
-        device->disable_fusion = getenv("GGML_VK_DISABLE_FUSION") != nullptr;
+        // Adreno 840 loses the device or corrupts inference with fused kernels.
+        device->disable_fusion = getenv("GGML_VK_DISABLE_FUSION") != nullptr ||
+            (device->vendor_id == VK_VENDOR_ID_QUALCOMM &&
+             strstr(device->properties.deviceName.data(), "Adreno (TM) 840") != nullptr);
 
         device->disable_descriptor_reuse = getenv("GGML_VK_DISABLE_DESCRIPTOR_REUSE") != nullptr;
 
