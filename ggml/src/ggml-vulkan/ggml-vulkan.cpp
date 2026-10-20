@@ -5291,17 +5291,19 @@ void ggml_vk_instance_init() {
     if (devices_env != nullptr) {
         size_t num_available_devices = devices.size();
 
-        std::string devices(devices_env);
-        std::replace(devices.begin(), devices.end(), ',', ' ');
+        std::string visible_devices(devices_env);
+        std::replace(visible_devices.begin(), visible_devices.end(), ',', ' ');
 
-        std::stringstream ss(devices);
+        std::stringstream ss(visible_devices);
         size_t tmp;
         while (ss >> tmp) {
             if(tmp >= num_available_devices) {
                 std::cerr << "ggml_vulkan: Invalid device index " << tmp << " in GGML_VK_VISIBLE_DEVICES." << std::endl;
                 throw std::runtime_error("Invalid Vulkan device index");
             }
-            vk_instance.device_indices.push_back(tmp);
+            if (ggml_vk_device_is_supported(devices[tmp])) {
+                vk_instance.device_indices.push_back(tmp);
+            }
         }
     } else {
         // If no vulkan devices are found, return early
@@ -5413,7 +5415,7 @@ void ggml_vk_instance_init() {
         // If only CPU devices are available, return without devices.
         if (vk_instance.device_indices.empty()) {
             for (size_t i = 0; i < devices.size(); i++) {
-                if (devices[i].getProperties().deviceType != vk::PhysicalDeviceType::eCpu) {
+                if (devices[i].getProperties().deviceType != vk::PhysicalDeviceType::eCpu && ggml_vk_device_is_supported(devices[i])) {
                     vk_instance.device_indices.push_back(i);
                     break;
                 }
@@ -16307,10 +16309,15 @@ bool ggml_vk_instance_debug_utils_ext_available(
 }
 
 bool ggml_vk_device_is_supported(const vk::PhysicalDevice & vkdev) {
-    VkPhysicalDeviceFeatures2 device_features2;
+    // The Android loader version can exceed the physical device's API version.
+    if (vkdev.getProperties().apiVersion < VK_API_VERSION_1_2) {
+        return false;
+    }
+
+    VkPhysicalDeviceFeatures2 device_features2{};
     device_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 
-    VkPhysicalDeviceVulkan11Features vk11_features;
+    VkPhysicalDeviceVulkan11Features vk11_features{};
     vk11_features.pNext = nullptr;
     vk11_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
     device_features2.pNext = &vk11_features;

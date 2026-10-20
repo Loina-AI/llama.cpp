@@ -1,4 +1,7 @@
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
+#ifdef cl_khr_3d_image_writes
+#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
+#endif
 
 __kernel void kernel_repack_mask_for_wmm(
     const global half* mask_buf,
