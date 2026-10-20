@@ -78,6 +78,7 @@ bool ggml_cl_compute_forward(ggml_backend_t backend, struct ggml_tensor * tensor
 static bool ggml_cl_is_q4_0_soa(const ggml_tensor * tensor);
 static bool ggml_cl_is_q8_0_soa(const ggml_tensor * tensor);
 static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst);
+static void ggml_cl_cpy(ggml_backend_t backend, const ggml_tensor * src0, const ggml_tensor * src1, ggml_tensor * dst);
 
 // See https://gmplib.org/~tege/divcnst-pldi94.pdf figure 4.1.
 // Precompute mp (m' in the paper) and L such that division
@@ -23662,6 +23663,32 @@ static void ggml_cl_mul_mat(ggml_backend_t backend, const ggml_tensor * src0, co
     const enum ggml_type src1t = src1->type;
 
     ggml_backend_opencl_context *backend_ctx = (ggml_backend_opencl_context *)backend->context;
+
+    // Convolution pairs F16 patches with F16 weights. Widen the small RHS
+    // on-device to use tiled GEMM with F32 accumulation instead of F16 GEMV.
+    if (backend_ctx->gpu_family == ADRENO && src0t == GGML_TYPE_F16 && src1t == GGML_TYPE_F16 &&
+        src0->ne[0] >= 64 && src0->ne[1] >= 64 && src1->ne[1] >= 64 &&
+        src0->ne[0] % 32 == 0 && src0->ne[1] % 64 == 0 && src1->ne[1] % 64 == 0 &&
+        src0->ne[2] == 1 && src0->ne[3] == 1 && src1->ne[2] == 1 && src1->ne[3] == 1 &&
+        ggml_is_contiguous(src0) && ggml_is_contiguous(src1) &&
+        ggml_nbytes(src1) <= (32u << 20) &&
+        backend_ctx->kernel_mul_mat_f16_f32_tiled != nullptr) {
+        ggml_tensor rhs = *src1;
+        rhs.type = GGML_TYPE_F32;
+        rhs.view_src = nullptr;
+        rhs.view_offs = 0;
+        rhs.nb[0] = sizeof(float);
+        for (int i = 1; i < GGML_MAX_DIMS; i++) {
+            rhs.nb[i] = rhs.nb[i - 1] * rhs.ne[i - 1];
+        }
+        backend_ctx->prealloc_src1.allocate(backend_ctx->context, ggml_nbytes(&rhs));
+        ggml_tensor_extra_cl extra = {};
+        extra.data_device = backend_ctx->prealloc_src1.buffer;
+        rhs.extra = &extra;
+        ggml_cl_cpy(backend, src1, &rhs, &rhs);
+        ggml_cl_mul_mat_f16_f32_tiled(backend, src0, &rhs, dst);
+        return;
+    }
 
     // quant kv without FA
     // used for non-contiguous src0 (the usual head-major permuted K view when n_head_kv>1)
