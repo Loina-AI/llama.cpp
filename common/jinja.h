@@ -16,6 +16,7 @@ const char * llama_jinja_default_template(void);
  * so C callers release them with free(). Templates may be reused. */
 llama_jinja * llama_jinja_create(const char * source, char * error, size_t capacity);
 char * llama_jinja_render(const llama_jinja * tmpl, const char * context_json, char * error, size_t capacity);
+char * llama_jinja_render_chat(llama_jinja * tmpl, const char * context_json, char * error, size_t capacity);
 void llama_jinja_free(llama_jinja * tmpl);
 
 #ifdef __cplusplus

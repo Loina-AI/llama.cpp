@@ -4234,6 +4234,13 @@ static void create_webgpu_device(ggml_backend_webgpu_reg_context * ctx) {
     ctx->webgpu_global_ctx->vendor                    = info.vendor;
     ctx->webgpu_global_ctx->capabilities.supports_subgroups =
         ctx->webgpu_global_ctx->adapter.HasFeature(wgpu::FeatureName::Subgroups);
+#if defined(__EMSCRIPTEN__)
+    // Adreno browser subgroup reductions lose partial sums. Keep GPU matmuls
+    // on workgroup reductions and let subgroup-only operations use CPU.
+    if (ctx->webgpu_global_ctx->vendor == "qualcomm") {
+        ctx->webgpu_global_ctx->capabilities.supports_subgroups = false;
+    }
+#endif
     // for dot4I8packed
     ctx->webgpu_global_ctx->capabilities.supports_dot_product = ctx->webgpu_global_ctx->instance.HasWGSLLanguageFeature(
         wgpu::WGSLLanguageFeatureName::Packed4x8IntegerDotProduct);

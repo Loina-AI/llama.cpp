@@ -3,6 +3,7 @@
 #include "value.h"
 #include "utils.h"
 #include "parser.h"
+#include "caps.h"
 #include "../jinja.h"
 #include "../chat-template.h"
 #include "../json.h"
@@ -994,6 +995,7 @@ std::string runtime::debug_dump_program(const program & prog, const std::string 
 struct llama_jinja {
     std::string source;
     jinja::program program;
+    int supports_system = -1;
 };
 
 static void jinja_error(char * error, size_t capacity, const char * message) {
@@ -1042,6 +1044,23 @@ char * llama_jinja_render(const llama_jinja * tmpl, const char * context_json, c
         }
         std::memcpy(output, result.c_str(), result.size() + 1);
         return output;
+    } catch (const std::exception & e) {
+        jinja_error(error, capacity, e.what());
+        return nullptr;
+    }
+}
+
+char * llama_jinja_render_chat(llama_jinja * tmpl, const char * context_json, char * error, size_t capacity) {
+    try {
+        if (!tmpl || !context_json) throw std::invalid_argument("Missing template or context");
+        if (tmpl->supports_system < 0) tmpl->supports_system = jinja::caps_get(tmpl->program).supports_system_role;
+        auto context = common_json::parse(context_json);
+        auto & messages = context.at("messages");
+        if (!tmpl->supports_system && !messages.empty() && messages.front().at("role") == "system") {
+            if (messages.size() > 1) messages[1]["content"] = messages[0].at("content").get<std::string>() + "\n\n" + messages[1].at("content").get<std::string>();
+            messages.erase(size_t(0));
+        }
+        return llama_jinja_render(tmpl, context.dump().c_str(), error, capacity);
     } catch (const std::exception & e) {
         jinja_error(error, capacity, e.what());
         return nullptr;

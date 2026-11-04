@@ -79,6 +79,7 @@ if(LLAMA_BUILD_JINJA)
         ../common/jinja/lexer.cpp
         ../common/jinja/parser.cpp
         ../common/jinja/runtime.cpp
+        ../common/jinja/caps.cpp
         ../common/jinja/value.cpp
         ../common/jinja/string.cpp)
     target_include_directories(llama-jinja PUBLIC ../common PRIVATE . ../vendor)
