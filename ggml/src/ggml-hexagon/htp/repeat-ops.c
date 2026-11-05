@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "hvx-utils.h"
+#include "dma-copy.h"
 
 #define GGML_COMMON_DECL_C
 #include "ggml-common.h"
@@ -66,6 +67,9 @@ static void repeat_job_per_thread(unsigned int nth, unsigned int ith, void * dat
         return;
     }
 
+    const bool extended = htp_tensor_is_extended(src) || htp_tensor_is_extended(dst);
+    dma_queue * dma_q = octx->ctx->dma[ith];
+
     struct htp_thread_trace * tr = &octx->ctx->trace[ith];
     htp_trace_event_start(tr, HTP_TRACE_EVT_HVX_COMP, row_start);
 
@@ -81,15 +85,19 @@ static void repeat_job_per_thread(unsigned int nth, unsigned int ith, void * dat
         const uint32_t k2 = fastmodulo(i2, ne02, &kparams->div_ne02);
         const uint32_t k3 = fastmodulo(i3, ne03, &kparams->div_ne03);
 
-        const uint8_t * src_row = (const uint8_t *) src->data + k1 * nb01 + k2 * nb02 + k3 * nb03;
-        uint8_t * dst_base      = (uint8_t *) dst->data + i1 * nb1 + i2 * nb2 + i3 * nb3;
+        const dma_addr_t src_row = src->data + (dma_addr_t) k1 * nb01 + (dma_addr_t) k2 * nb02 + (dma_addr_t) k3 * nb03;
+        const dma_addr_t dst_base = dst->data + (dma_addr_t) i1 * nb1 + (dma_addr_t) i2 * nb2 + (dma_addr_t) i3 * nb3;
 
         // Tile along dimension 0
         for (uint32_t i0 = 0; i0 < nr0; i0++) {
-            uint8_t * dst_ptr = dst_base + i0 * ne00 * nb0;
-            memcpy(dst_ptr, src_row, row_bytes);
+            const dma_addr_t dst_ptr = dst_base + (dma_addr_t) i0 * ne00 * nb0;
+            // Extended weight mappings are DMA addresses, outside the DSP's pointer space.
+            if (extended) dma_cpy_sametype_reshape_contig(dma_q, dst_ptr, src_row, row_bytes);
+            else memcpy((void *) (uintptr_t) dst_ptr, (const void *) (uintptr_t) src_row, row_bytes);
         }
     }
+
+    if (extended) dma_queue_flush(dma_q);
 
     htp_trace_event_stop(tr, HTP_TRACE_EVT_HVX_COMP, row_start);
 
@@ -112,9 +120,7 @@ int op_repeat(struct htp_ops_context * octx) {
             return HTP_STATUS_NO_SUPPORT;
     }
 
-    if (htp_tensor_is_extended(src0) || htp_tensor_is_extended(dst)) {
-        return HTP_STATUS_NO_SUPPORT;
-    }
+    if (htp_tensor_is_extended(dst)) return HTP_STATUS_NO_SUPPORT;
 
     const struct htp_repeat_kernel_params * kparams =
         (const struct htp_repeat_kernel_params *) octx->kernel_params;
