@@ -783,16 +783,17 @@ static void l2_norm_f32(const void * restrict src,
     }
 }
 
+// Keep butterflies in IEEE FP32: QF32 intermediates overflow for subnormal inputs.
 static inline HVX_VectorPair hvx_fwht_stage_pair(HVX_Vector v0, HVX_Vector v1, int32_t b) {
     HVX_VectorPair p = Q6_W_vshuff_VVR(v1, v0, b);
-    HVX_Vector s = Q6_Vqf32_vadd_Vqf32Vqf32(Q6_V_lo_W(p), Q6_V_hi_W(p));
-    HVX_Vector d = Q6_Vqf32_vsub_Vqf32Vqf32(Q6_V_lo_W(p), Q6_V_hi_W(p));
+    HVX_Vector s = hvx_vec_add_f32_f32(Q6_V_lo_W(p), Q6_V_hi_W(p));
+    HVX_Vector d = hvx_vec_sub_f32_f32(Q6_V_lo_W(p), Q6_V_hi_W(p));
     return Q6_W_vshuff_VVR(d, s, b);
 }
 
 static inline HVX_VectorPair hvx_fwht32_pair(HVX_Vector v0_sf, HVX_Vector v1_sf, HVX_Vector v_scale) {
-    HVX_Vector v0 = Q6_Vqf32_vmpy_VsfVsf(v0_sf, v_scale);
-    HVX_Vector v1 = Q6_Vqf32_vmpy_VsfVsf(v1_sf, v_scale);
+    HVX_Vector v0 = hvx_vec_mul_f32_f32(v0_sf, v_scale);
+    HVX_Vector v1 = hvx_vec_mul_f32_f32(v1_sf, v_scale);
     HVX_VectorPair p;
     p = hvx_fwht_stage_pair(v0, v1, 4);
     p = hvx_fwht_stage_pair(Q6_V_lo_W(p), Q6_V_hi_W(p), 8);
@@ -803,14 +804,14 @@ static inline HVX_VectorPair hvx_fwht32_pair(HVX_Vector v0_sf, HVX_Vector v1_sf,
 }
 
 static inline void hvx_fwht_store32(HVX_Vector * restrict v_dst, HVX_VectorPair p) {
-    v_dst[0] = Q6_Vsf_equals_Vqf32(Q6_V_lo_W(p));
+    v_dst[0] = Q6_V_lo_W(p);
 }
 
 static inline void hvx_fwht_store64(HVX_Vector * restrict v_dst, HVX_VectorPair p) {
     HVX_Vector u = Q6_V_lo_W(p);
     HVX_Vector v = Q6_V_hi_W(p);
-    v_dst[0] = Q6_Vsf_equals_Vqf32(Q6_Vqf32_vadd_Vqf32Vqf32(u, v));
-    v_dst[1] = Q6_Vsf_equals_Vqf32(Q6_Vqf32_vsub_Vqf32Vqf32(u, v));
+    v_dst[0] = hvx_vec_add_f32_f32(u, v);
+    v_dst[1] = hvx_vec_sub_f32_f32(u, v);
 }
 
 static inline void hvx_fwht_tail_f32(HVX_Vector * restrict v_dst, uint32_t nvec) {

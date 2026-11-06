@@ -13,6 +13,7 @@
 
 #include "dma-queue.h"
 #include "hvx-utils.h"
+#include "hvx-quant.h"
 #include "hvx-dump.h"
 #include "hvx-arith.h"
 #include "hvx-reduce.h"

@@ -409,6 +409,23 @@ int htpdrv_get_arch(int domain, int * arch) {
     arch_ver.capability   = (uint32_t) 0;
 
     int err = remote_handle_control(DSPRPC_GET_DSP_INFO, &arch_ver, sizeof(arch_ver));
+    if (err != AEE_SUCCESS && domain == CDSP_DOMAIN_ID) {
+        // New FastRPC drivers assign CDSP domain IDs through discovery.
+        fastrpc_domain domains[16] = {};
+        system_req_payload request = {};
+        request.id = FASTRPC_GET_DOMAINS;
+        request.sys.domains = domains;
+        request.sys.max_domains = 16;
+        request.sys.flags = DOMAINS_LIST_FLAGS_SET_TYPE(0, FASTRPC_NSP);
+        if (remote_system_request(&request) == AEE_SUCCESS) {
+            for (int i = 0; i < request.sys.num_domains && i < 16; i++) {
+                if (domains[i].type != FASTRPC_NSP || !domains[i].status || domains[i].instance_id != 0) continue;
+                arch_ver.domain = (uint32_t) domains[i].id;
+                err = remote_handle_control(DSPRPC_GET_DSP_INFO, &arch_ver, sizeof(arch_ver));
+                break;
+            }
+        }
+    }
     if ((err & 0xff) == (AEE_EUNSUPPORTEDAPI & 0xff)) {
         GGML_LOG_ERROR("ggml-hex: FastRPC capability API is not supported on this device\n");
         return AEE_EUNSUPPORTEDAPI;

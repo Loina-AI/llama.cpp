@@ -186,6 +186,9 @@ SET_ROWS_THREAD_DMA_FN(f16,  int64_t, { hvx_copy_f16_f32_uu((uint8_t *)dst_spad,
 SET_ROWS_THREAD_DMA_FN(q8_0, int32_t, { hvx_quantize_row_q8_0_f32(dst_spad, (const float *)src_spad, ne00); })
 SET_ROWS_THREAD_DMA_FN(q8_0, int64_t, { hvx_quantize_row_q8_0_f32(dst_spad, (const float *)src_spad, ne00); })
 
+SET_ROWS_THREAD_DMA_FN(q4_0, int32_t, { hvx_quantize_row_q4_0_f32(dst_spad, (const float *)src_spad, ne00); })
+SET_ROWS_THREAD_DMA_FN(q4_0, int64_t, { hvx_quantize_row_q4_0_f32(dst_spad, (const float *)src_spad, ne00); })
+
 int op_set_rows(struct htp_ops_context * octx) {
     const struct htp_set_rows_kernel_params * kparams = (const struct htp_set_rows_kernel_params *)octx->kernel_params;
     set_rows_preamble;
@@ -236,6 +239,7 @@ int op_set_rows(struct htp_ops_context * octx) {
     switch (octx->dst->type) {
         case HTP_TYPE_F32:  q_func = is_i32 ? set_rows_thread_dma_f32_int32_t  : set_rows_thread_dma_f32_int64_t;  break;
         case HTP_TYPE_F16:  q_func = is_i32 ? set_rows_thread_dma_f16_int32_t  : set_rows_thread_dma_f16_int64_t;  break;
+        case HTP_TYPE_Q4_0: q_func = is_i32 ? set_rows_thread_dma_q4_0_int32_t : set_rows_thread_dma_q4_0_int64_t; break;
         case HTP_TYPE_Q8_0: q_func = is_i32 ? set_rows_thread_dma_q8_0_int32_t : set_rows_thread_dma_q8_0_int64_t; break;
         default:            return HTP_STATUS_NO_SUPPORT;
     }

@@ -185,6 +185,23 @@ llama_memory_breakdown_print: |   - HTP0 (Hexagon)     |  2048 = 2048 + (   0 = 
 llama_memory_breakdown_print: |   - Host               |                  439 =   225 +     136 +      77                |
 ```
 
+### Quantized KV cache
+
+Hexagon supports F16, Q8_0 and Q4_0 keys and values, including mixed key/value
+precisions. Enable flash attention when quantizing the V cache:
+
+```sh
+./scripts/snapdragon/run.py --target adb --devices HTP0 -- \
+    llama-cli -m models/model.gguf -ngl 99 -fa on -ctk q8_0 -ctv q4_0 -p "Hello"
+```
+
+Cache rows must be a multiple of 32 elements for Q4_0 and Q8_0. Cache writes,
+attention reads and the quantized-cache Hadamard rotations run on the DSP.
+Cache reads use aligned HVX loads for both scales and quantized values; scalar
+loads from VTCM can dominate single-token attention at longer contexts.
+Regression cases in `test-backend-ops` cover mixed Q4/Q8 attention, indexed
+cache writes, tiny activation scales and subnormal inputs to rotations.
+
 Op test for MUL_MAT:
 
 ```

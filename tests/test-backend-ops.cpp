@@ -2792,6 +2792,28 @@ struct test_set_rows : public test_case {
     }
 };
 
+struct test_set_rows_small_activation : public test_set_rows {
+    const float activation_scale;
+
+    test_set_rows_small_activation(float scale, ggml_type cache_type = GGML_TYPE_Q8_0)
+        : test_set_rows(GGML_TYPE_F32, cache_type, GGML_TYPE_I32, {128, 1, 1, 1}, {1, 1}, 1), activation_scale(scale) {}
+
+    std::string vars() override { return test_set_rows::vars() + "," + VAR_TO_STR(activation_scale); }
+    double max_nmse_err() override { return 1e-8; }
+
+    void initialize_tensors(ggml_context * ctx) override {
+        test_set_rows::initialize_tensors(ctx);
+        ggml_tensor * src = ggml_get_tensor(ctx, "src");
+        std::vector<float> values(ggml_nelements(src));
+        // Keep values away from rounding ties and include both signs in every block.
+        for (size_t i = 0; i < values.size(); i++) {
+            int j = i % 32;
+            values[i] = j == 0 ? activation_scale : activation_scale * ((j % 15) + 0.25f) / 127.0f * (j % 2 ? -1.0f : 1.0f);
+        }
+        ggml_backend_tensor_set(src, values.data(), 0, ggml_nbytes(src));
+    }
+};
+
 // GGML_OP_ROPE + GGML_OP_VIEW + GGML_OP_SET_ROWS
 struct test_rope_set_rows : public test_case {
     const ggml_type type;
@@ -5543,6 +5565,26 @@ struct test_mul_mat : public test_case {
     }
 };
 
+struct test_mul_mat_small_activation : public test_mul_mat {
+    const float activation_scale;
+
+    test_mul_mat_small_activation(float scale)
+        : test_mul_mat(GGML_TYPE_Q8_0, GGML_TYPE_F32, 64, 1, 256, {1, 1}, {1, 1}), activation_scale(scale) {}
+
+    double max_nmse_err() override { return 1e-6; }
+
+    std::string vars() override {
+        return test_mul_mat::vars() + "," + VAR_TO_STR(activation_scale);
+    }
+
+    void initialize_tensors(ggml_context * ctx) override {
+        for (ggml_tensor * t = ggml_get_first_tensor(ctx); t; t = ggml_get_next_tensor(ctx, t)) {
+            float scale = strcmp(t->name, "b") == 0 ? activation_scale : 1.0f;
+            init_tensor_uniform(t, -scale, scale);
+        }
+    }
+};
+
 // GGML_HINT_SRC0_IS_HADAMARD
 struct test_mul_mat_hadamard : public test_mul_mat {
     test_mul_mat_hadamard(ggml_type type_a = GGML_TYPE_F32, ggml_type type_b = GGML_TYPE_F32,
@@ -5593,6 +5635,21 @@ struct test_mul_mat_hadamard : public test_mul_mat {
     std::string op_desc(ggml_tensor * t) override {
         GGML_UNUSED(t);
         return "MUL_MAT_HADAMARD";
+    }
+};
+
+struct test_mul_mat_hadamard_denormal : public test_mul_mat_hadamard {
+    test_mul_mat_hadamard_denormal() : test_mul_mat_hadamard(GGML_TYPE_F32, GGML_TYPE_F32, 128, 140, 128) {}
+
+    std::string vars() override { return test_mul_mat::vars() + ",denormal=1"; }
+
+    void initialize_tensors(ggml_context * ctx) override {
+        test_mul_mat_hadamard::initialize_tensors(ctx);
+        ggml_tensor * b = ggml_get_tensor(ctx, "b");
+        std::vector<float> values(ggml_nelements(b));
+        ggml_backend_tensor_get(b, values.data(), 0, ggml_nbytes(b));
+        for (size_t i = 0; i < values.size(); i += 7) values[i] = i % 3 ? values[i] * 1e-38f : 0.0f;
+        ggml_backend_tensor_set(b, values.data(), 0, ggml_nbytes(b));
     }
 };
 
@@ -10506,6 +10563,13 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_F32, GGML_TYPE_I64, { 1, 8, 1, 3 }, { 1, 1 }, 2, false));
     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_F32, GGML_TYPE_I32, { 1, 8, 1, 3 }, { 1, 1 }, 2, false));
     test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, GGML_TYPE_Q8_0, GGML_TYPE_I32, { 256, 5, 1, 3 }, { 1, 1, }, 1, false));
+    for (ggml_type type : {GGML_TYPE_Q4_0, GGML_TYPE_Q8_0}) {
+        for (ggml_type index : {GGML_TYPE_I32, GGML_TYPE_I64}) {
+            for (int rows : {1, 7, 128}) {
+                test_cases.emplace_back(new test_set_rows(GGML_TYPE_F32, type, index, {128, 257, 2, 1}, {1, 1}, rows));
+            }
+        }
+    }
     for (ggml_type src_type : {GGML_TYPE_F16, GGML_TYPE_F32}) {
         for (ggml_type type : all_types) {
             for (int b : {1, 7}) {
@@ -11481,6 +11545,9 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
     test_cases.emplace_back(new test_mul_mat_id_w4a8(GGML_TYPE_MXFP4, GGML_TYPE_F32, 8, 2, false, 32, 32, 256));
     test_cases.emplace_back(new test_mul_mat_id_w4a4(GGML_TYPE_MXFP4, GGML_TYPE_F32, 8, 2, false, 32, 32, 256));
 
+    for (float scale : {1e-2f, 1e-4f, 1e-6f}) {
+        test_cases.emplace_back(new test_mul_mat_small_activation(scale));
+    }
     test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F16, GGML_TYPE_F16, 1024, 128, 1152, {1, 1}, {1, 1}));
     test_cases.emplace_back(new test_mul_mat(GGML_TYPE_F16, GGML_TYPE_F16, 127, 65, 72, {1, 1}, {1, 1}));
 
@@ -13005,6 +13072,35 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_eval() {
         }
     }
 
+    for (ggml_type k : {GGML_TYPE_Q4_0, GGML_TYPE_Q8_0}) {
+        for (ggml_type v : {GGML_TYPE_Q4_0, GGML_TYPE_Q8_0}) {
+            for (int tokens : {1, 35}) {
+                test_cases.emplace_back(new test_flash_attn_ext(128, 128, 2, {2, 1}, 256, tokens,
+                    true, false, 0, 0, GGML_PREC_F32, k, v));
+            }
+        }
+    }
+
+    for (int64_t rows : {140, 560}) {
+        test_cases.emplace_back(new test_mul_mat_hadamard(GGML_TYPE_F32, GGML_TYPE_F32, 128, rows, 128));
+    }
+    test_cases.emplace_back(new test_mul_mat_hadamard(GGML_TYPE_F32, GGML_TYPE_F32, 64, 280, 64));
+    test_cases.emplace_back(new test_mul_mat_hadamard_denormal());
+    for (ggml_type type : {GGML_TYPE_Q4_0, GGML_TYPE_Q8_0}) {
+        for (float scale : {1e-2f, 1e-4f, 1e-5f}) {
+            test_cases.emplace_back(new test_set_rows_small_activation(scale, type));
+        }
+    }
+    for (int64_t kv : {256, 1024, 2048, 3072, 4096, 8192}) {
+        test_cases.emplace_back(new test_flash_attn_ext(128, 128, 4, {4, 1}, kv, 1,
+            true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, {0, 2, 1, 3}, false));
+    }
+    for (int head : {32, 64, 256, 512}) {
+        for (int tokens : {1, 35}) {
+            test_cases.emplace_back(new test_flash_attn_ext(head, head, 2, {2, 1}, 256, tokens,
+                true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q4_0, GGML_TYPE_Q4_0));
+        }
+    }
     return test_cases;
 }
 #ifdef _MSC_VER
@@ -13582,6 +13678,11 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
         test_cases.emplace_back(new test_l2_norm_batch(GGML_TYPE_F32, { n, 16, 16, 1 }, 4, 1e-12f, true));
     }
 
+
+    for (int64_t kv : {256, 1024, 2048, 3072, 4096, 8192}) {
+        test_cases.emplace_back(new test_flash_attn_ext(128, 128, 4, {4, 1}, kv, 1,
+            true, false, 0, 0, GGML_PREC_F32, GGML_TYPE_Q8_0, GGML_TYPE_Q4_0, {0, 2, 1, 3}, false));
+    }
 
     return test_cases;
 }

@@ -289,8 +289,8 @@ static bool htp_flash_attn_is_hmx_eligible(
         return false;
     }
 
-    if ((k->type != GGML_TYPE_F16 && k->type != GGML_TYPE_Q8_0) ||
-        (v->type != GGML_TYPE_F16 && v->type != GGML_TYPE_Q8_0)) {
+    if ((k->type != GGML_TYPE_F16 && k->type != GGML_TYPE_Q8_0 && k->type != GGML_TYPE_Q4_0) ||
+        (v->type != GGML_TYPE_F16 && v->type != GGML_TYPE_Q8_0 && v->type != GGML_TYPE_Q4_0)) {
         return false;
     }
 
@@ -367,8 +367,8 @@ static bool htp_kparams_solve_flash_attn(
     const struct ggml_tensor * dst   = op;
 
     if ((q->type != GGML_TYPE_F16 && q->type != GGML_TYPE_F32) ||
-        (k->type != GGML_TYPE_F16 && k->type != GGML_TYPE_Q8_0) ||
-        (v->type != GGML_TYPE_F16 && v->type != GGML_TYPE_Q8_0)) {
+        (k->type != GGML_TYPE_F16 && k->type != GGML_TYPE_Q8_0 && k->type != GGML_TYPE_Q4_0) ||
+        (v->type != GGML_TYPE_F16 && v->type != GGML_TYPE_Q8_0 && v->type != GGML_TYPE_Q4_0)) {
         return false;
     }
     if (mask && mask->type != GGML_TYPE_F16) {
@@ -1747,7 +1747,7 @@ static bool htp_kparams_solve_set_rows(
     const struct ggml_tensor * src1 = op->src[1];
     const struct ggml_tensor * dst  = op->src[2] ? op->src[2] : op;
 
-    if (dst->type == GGML_TYPE_Q8_0 && src0->ne[0] < 32) {
+    if ((dst->type == GGML_TYPE_Q8_0 || dst->type == GGML_TYPE_Q4_0) && src0->ne[0] % 32 != 0) {
         return false;
     }
     if (src0->type != GGML_TYPE_F32) {
@@ -1756,7 +1756,7 @@ static bool htp_kparams_solve_set_rows(
     if (src1->type != GGML_TYPE_I32 && src1->type != GGML_TYPE_I64) {
         return false;
     }
-    if (dst->type != GGML_TYPE_F32 && dst->type != GGML_TYPE_F16 && dst->type != GGML_TYPE_Q8_0) {
+    if (dst->type != GGML_TYPE_F32 && dst->type != GGML_TYPE_F16 && dst->type != GGML_TYPE_Q8_0 && dst->type != GGML_TYPE_Q4_0) {
         return false;
     }
 

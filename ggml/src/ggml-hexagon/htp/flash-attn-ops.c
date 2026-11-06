@@ -474,19 +474,21 @@ static void flash_attn_ext_f16_thread(unsigned int nth, unsigned int ith, void *
             uint8_t * v_base = (void *) dma_queue_pop(dma_q).dst; // V
             __fp16  * m_base = mask ? (__fp16 *) dma_queue_pop(dma_q).dst : NULL; // M
 
-            if (factx->k->type == HTP_TYPE_Q8_0) {
+            if (factx->k->type == HTP_TYPE_Q8_0 || factx->k->type == HTP_TYPE_Q4_0) {
                 htp_trace_event_start(tr, HTP_TRACE_EVT_HVX_FA_K_PREP, ir);
                 for (uint32_t r = 0; r < current_block_size; ++r) {
                     __fp16 * row_k = (__fp16 *)(k_base + r * factx->size_k_row_padded);
-                    hvx_dequantize_row_flat_q8_0_f16(row_k, row_k, DK);
+                    if (factx->k->type == HTP_TYPE_Q4_0) hvx_dequantize_row_flat_q4_0_f16(row_k, row_k, DK);
+                    else hvx_dequantize_row_flat_q8_0_f16(row_k, row_k, DK);
                 }
                 htp_trace_event_stop(tr, HTP_TRACE_EVT_HVX_FA_K_PREP, ir);
             }
-            if (factx->v->type == HTP_TYPE_Q8_0) {
+            if (factx->v->type == HTP_TYPE_Q8_0 || factx->v->type == HTP_TYPE_Q4_0) {
                 htp_trace_event_start(tr, HTP_TRACE_EVT_HVX_FA_V_PREP, ir);
                 for (uint32_t r = 0; r < current_block_size; ++r) {
                     __fp16 * row_v = (__fp16 *)(v_base + r * factx->size_v_row_padded);
-                    hvx_dequantize_row_flat_q8_0_f16(row_v, row_v, DV);
+                    if (factx->v->type == HTP_TYPE_Q4_0) hvx_dequantize_row_flat_q4_0_f16(row_v, row_v, DV);
+                    else hvx_dequantize_row_flat_q8_0_f16(row_v, row_v, DV);
                 }
                 htp_trace_event_stop(tr, HTP_TRACE_EVT_HVX_FA_V_PREP, ir);
             }
@@ -789,10 +791,11 @@ static void fa_k_interleave_thread(unsigned int n, unsigned int i, void * data) 
 
     struct htp_thread_trace * tr = &factx->octx->ctx->trace[i];
     htp_trace_event_start(tr, HTP_TRACE_EVT_HVX_FA_K_PREP, (uint16_t) (args->kv_start + start));
-    if (factx->k->type == HTP_TYPE_Q8_0) {
+    if (factx->k->type == HTP_TYPE_Q8_0 || factx->k->type == HTP_TYPE_Q4_0) {
         for (uint32_t r = start; r < end; ++r) {
             __fp16 * row_k = (__fp16 *)((char *)args->curr_k + r * args->src_stride * sizeof(__fp16));
-            hvx_dequantize_row_flat_q8_0_f16(row_k, row_k, factx->DK);
+            if (factx->k->type == HTP_TYPE_Q4_0) hvx_dequantize_row_flat_q4_0_f16(row_k, row_k, factx->DK);
+            else hvx_dequantize_row_flat_q8_0_f16(row_k, row_k, factx->DK);
         }
     }
     hmx_interleave_rows_to_tiles(factx->vtcm_k_tiles[args->buf_idx], (const __fp16 *) args->curr_k, total_rows, factx->DK_pad,
@@ -843,10 +846,11 @@ static void fa_v_interleave_thread(unsigned int n, unsigned int i, void * data) 
 
     struct htp_thread_trace * tr = &factx->octx->ctx->trace[i];
     htp_trace_event_start(tr, HTP_TRACE_EVT_HVX_FA_V_PREP, (uint16_t) (args->kv_start + start));
-    if (factx->v->type == HTP_TYPE_Q8_0) {
+    if (factx->v->type == HTP_TYPE_Q8_0 || factx->v->type == HTP_TYPE_Q4_0) {
         for (uint32_t r = start; r < end; ++r) {
             __fp16 * row_v = (__fp16 *)((char *)args->v_src + r * args->src_stride * sizeof(__fp16));
-            hvx_dequantize_row_flat_q8_0_f16(row_v, row_v, factx->DV);
+            if (factx->v->type == HTP_TYPE_Q4_0) hvx_dequantize_row_flat_q4_0_f16(row_v, row_v, factx->DV);
+            else hvx_dequantize_row_flat_q8_0_f16(row_v, row_v, factx->DV);
         }
     }
     hmx_interleave_cols_to_tiles(v_tiles_dst, (const __fp16 *) args->v_src, total_rows, factx->DV_pad,
@@ -2666,8 +2670,8 @@ int op_flash_attn_ext(struct htp_ops_context * octx) {
 
     // Check support
     if ((q->type != HTP_TYPE_F16 && q->type != HTP_TYPE_F32) ||
-        (k->type != HTP_TYPE_F16 && k->type != HTP_TYPE_Q8_0) ||
-        (v->type != HTP_TYPE_F16 && v->type != HTP_TYPE_Q8_0)) {
+        (k->type != HTP_TYPE_F16 && k->type != HTP_TYPE_Q8_0 && k->type != HTP_TYPE_Q4_0) ||
+        (v->type != HTP_TYPE_F16 && v->type != HTP_TYPE_Q8_0 && v->type != HTP_TYPE_Q4_0)) {
         return HTP_STATUS_NO_SUPPORT;
     }
 
