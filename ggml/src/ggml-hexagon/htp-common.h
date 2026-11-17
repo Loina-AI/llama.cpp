@@ -71,7 +71,8 @@ static inline bool ggml_hexagon_tensor_can_tile(const struct ggml_tensor * t) {
             return false;
         }
     }
-    return htp_is_tiled_weight_tensor(t);
+    // Tiling F32/BF16 weights converts them to F16; keep that precision loss opt-in.
+    return htp_is_tiled_weight_tensor(t) && (opt_rt_repack > 1 || ggml_is_quantized(t->type));
 }
 
 static inline bool ggml_hexagon_tensor_will_tile(const struct ggml_tensor * t) {

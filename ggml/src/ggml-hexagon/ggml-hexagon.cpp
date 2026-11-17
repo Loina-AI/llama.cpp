@@ -151,7 +151,7 @@ int    opt_opqueue   = 8;    // max number of pending batches
 int    opt_optrace   = 0;    // trace buffer size per thread (0 means default)
 int    opt_oppoll    = 0;    // polling for batch completions
 int    opt_opfusion  = 1;    // enable/disable op fusion
-int    opt_rt_repack = 1;    // runtime repacking: 0 = disabled, 1 = all tileable weights (default)
+int    opt_rt_repack = 1;    // runtime repacking: 0 = disabled, 1 = quantized only (default), 2 = all tileable weights
 
 static std::regex* opt_opfilter = NULL; // regex of ops to not claim
 
@@ -950,7 +950,8 @@ static size_t ggml_backend_hexagon_buffer_type_get_alignment(ggml_backend_buffer
 }
 
 static size_t ggml_backend_hexagon_buffer_type_get_alloc_size(ggml_backend_buffer_type_t buft, const struct ggml_tensor * t) {
-    if (opt_rt_repack != 0 && !ggml_backend_buft_is_host(buft) && ggml_op_is_empty(t->op) && htp_is_tiled_weight_tensor(t)) {
+    if (opt_rt_repack != 0 && (opt_rt_repack > 1 || ggml_is_quantized(t->type)) &&
+        !ggml_backend_buft_is_host(buft) && ggml_op_is_empty(t->op) && htp_is_tiled_weight_tensor(t)) {
         int64_t ne0 = hex_round_up(t->ne[0], 32);
         int64_t ne1 = hex_round_up(t->ne[1], 32);
         int64_t ne2 = t->ne[2];

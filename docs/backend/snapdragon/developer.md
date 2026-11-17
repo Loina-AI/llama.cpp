@@ -57,6 +57,11 @@ Tiling groups 2D matrix blocks contiguously:
 - Repacking happens on the host during model load (`set_tensor()`) or via runtime repacking (`rt-repack`).
 Implementation: [`htp-repack.cpp`](../../../ggml/src/ggml-hexagon/htp-repack.cpp).
 
+`GGML_HEXAGON_RT_REPACK=1` (default) tiles quantized weights. Set it to `2` to
+also tile floating-point weights, or `0` to disable runtime repacking. Floating
+weights are converted to F16 when tiled; keeping that opt-in preserves F32
+gate weights and the established LFM3 decode results.
+
 ### Tile Dimensions and Grid Layout
 
 Each tile represents a submatrix of `N_rows = 32` rows and `K_cols` columns:
